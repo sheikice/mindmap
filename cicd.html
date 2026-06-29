@@ -1,0 +1,332 @@
+# CI/CD avec GitHub et GitHub Actions
+
+## Fondamentaux du CI/CD et périmètre retenu
+### Définitions clés
+- Intégration continue : fusionner et valider le code fréquemment
+- Livraison continue : rendre le code déployable à tout moment
+- Déploiement continu : déployer automatiquement après validation
+- Pipeline : enchaînement de jobs et steps automatisés
+### Périmètre de cette carte
+- Approche générique, indépendante d'une stack applicative
+- Indépendante d'un fournisseur cloud particulier
+- Centrée sur l'écosystème GitHub et GitHub Actions
+- Exclut toute tarification détaillée susceptible d'évoluer
+### Bénéfices attendus
+- Détection précoce des régressions
+- Réduction du risque de déploiement
+- Feedback rapide aux développeurs
+- Automatisation des tâches répétitives
+### Prérequis généraux
+- Dépôt Git hébergé sur GitHub
+- Compréhension des branches et pull requests
+- Notion de syntaxe YAML
+- Compréhension des notions de build, test, déploiement
+
+## Architecture de GitHub Actions
+### Concepts structurants
+#### Workflow
+- Fichier YAML décrivant un processus automatisé
+- Stocké dans `.github/workflows`
+- Déclenché par un ou plusieurs événements
+- Contient un ou plusieurs jobs
+#### Job
+- Ensemble de steps exécutés sur un même runner
+- Exécution parallèle par défaut entre jobs
+- Dépendance explicite possible via `needs`
+- Possède un contexte d'exécution propre
+#### Step
+- Unité d'exécution au sein d'un job
+- Peut exécuter une commande shell ou appeler une action
+- Exécution séquentielle au sein du job
+- Peut avoir un `id` pour référencer ses outputs
+#### Runner
+- Machine qui exécute les jobs d'un workflow
+- Runner hébergé par GitHub ou auto-hébergé
+- Voir aussi : Runners auto-hébergés
+### Relations entre composants
+- Un workflow contient des jobs
+- Un job contient des steps
+- Un step peut appeler une action
+- Une action s'exécute sur un runner
+### Modèle d'exécution
+- Chaque job démarre sur un environnement neuf
+- Système de fichiers non partagé entre jobs sans artefact
+- Jobs d'un même workflow exécutables en parallèle par défaut
+- Dépend de : `needs` pour séquencer les jobs
+
+## Déclencheurs, événements et filtres
+### Événements GitHub courants
+- `push`
+- `pull_request`
+- `workflow_dispatch` pour un déclenchement manuel
+- `schedule` pour un déclenchement planifié
+- `release`
+- `workflow_call` pour un appel depuis un autre workflow
+- `repository_dispatch` pour des événements externes
+### Filtres d'événements
+- Filtres par branche
+- Filtres par tag
+- Filtres par chemins de fichiers modifiés
+- Filtres par type d'activité, par exemple `opened` ou `closed`
+### Bonnes pratiques de déclenchement
+- Limiter les déclenchements inutiles avec des filtres de chemin
+- Combiner plusieurs événements lorsque pertinent
+- Réserver `workflow_dispatch` aux actions manuelles ou exceptionnelles
+### Erreurs fréquentes
+- Déclenchement non désiré sur toutes les branches
+- Boucle de déclenchement entre workflows liés
+- Filtres insuffisants sur les pull requests externes
+
+## Langage des workflows : syntaxe et données
+### Syntaxe YAML de base
+- Clé `name` pour nommer le workflow
+- Clé `on` pour les déclencheurs
+- Clé `jobs` pour la liste des jobs
+- Clé `runs-on` pour le type de runner
+- Clé `steps` pour la séquence d'actions
+### Contextes disponibles
+- `github` : informations sur l'événement et le dépôt
+- `env` : variables d'environnement
+- `job` : informations sur le job courant
+- `steps` : accès aux outputs des steps précédents
+- `secrets` : accès aux secrets configurés
+- `matrix` : valeurs de la combinaison courante
+- `needs` : outputs des jobs dépendants
+### Expressions
+- Syntaxe `${{ }}` pour évaluer une expression
+- Fonctions intégrées comme `contains`, `startsWith`, `format`
+- Opérateurs logiques et de comparaison
+- Utilisées dans `if`, `env` et les valeurs de paramètres
+### Variables et secrets d'environnement
+- `env` configurable au niveau workflow, job ou step
+- Variables définissables au niveau dépôt ou organisation
+- Risque associé : sécurité des secrets et permissions
+### Outputs
+- Outputs définis au niveau d'un step
+- Outputs agrégés au niveau d'un job
+- Transmission d'outputs entre jobs via `needs`
+- Limite : taille et persistance restreintes des outputs
+
+## Parallélisation, cache et artefacts
+### Stratégies matricielles
+#### Définition d'une matrice
+- Génère plusieurs jobs à partir d'une combinaison de valeurs
+- Clé `strategy.matrix`
+- Exemple : tester plusieurs versions de langage en parallèle
+#### Options avancées
+- `include` pour ajouter des combinaisons spécifiques
+- `exclude` pour retirer des combinaisons
+- `fail-fast` pour interrompre les jobs restants en cas d'échec
+- `max-parallel` pour limiter la concurrence
+### Cache
+- Mise en cache des dépendances via une action dédiée
+- Clé de cache généralement basée sur un hash de fichier de verrouillage
+- Réduction du temps d'installation des dépendances
+- Limite : invalidation nécessaire en cas de clé obsolète
+- Risque associé : restauration d'un cache corrompu ou périmé
+### Artefacts
+- Persistance de fichiers entre jobs ou après le workflow
+- Upload et download explicites via actions dédiées
+- Durée de rétention configurable
+- Usage typique : binaires de build, rapports de tests
+### Critères de choix cache vs artefact
+- Cache : accélérer une étape répétitive comme l'installation
+- Artefact : transmettre un résultat de build ou de test
+- Cache à traiter comme une optimisation, non comme une garantie
+- Artefact destiné à être consulté après l'exécution
+
+## Réutilisabilité des workflows
+### Workflows réutilisables
+- Workflow appelé par un autre via `workflow_call`
+- Définition d'inputs et de secrets attendus
+- Outputs renvoyés au workflow appelant
+- Favorise la cohérence entre plusieurs pipelines
+### Actions composites
+- Regroupement de plusieurs steps en une action unique
+- Définie par un fichier `action.yml`
+- Réutilisable au sein d'un ou plusieurs dépôts
+- À comparer avec : workflows réutilisables
+### Critères de choix
+- Action composite : encapsuler une séquence de steps
+- Workflow réutilisable : encapsuler un pipeline complet avec jobs
+- Action composite généralement plus simple à publier et versionner
+- Workflow réutilisable adapté à la standardisation inter-équipes
+### Bonnes pratiques de réutilisation
+- Versionner les actions et workflows partagés
+- Documenter les inputs et outputs attendus
+- Centraliser les workflows communs dans un dépôt dédié
+### Erreurs fréquentes
+- Duplication de logique entre plusieurs workflows
+- Absence de versionnement explicite des actions internes
+- Inputs non validés provoquant des échecs silencieux
+
+## Environnements, déploiement et gouvernance des branches
+### GitHub Environments
+#### Rôle
+- Représente une cible de déploiement, par exemple préproduction ou production
+- Permet d'associer des règles de protection
+- Permet d'associer des secrets spécifiques à l'environnement
+#### Règles de protection
+- Approbateurs requis avant déploiement
+- Délai d'attente configurable avant exécution
+- Restriction des branches autorisées à déployer
+### Protections de branches
+- Règles appliquées sur une branche pour en contrôler l'évolution
+- Pull request requise avant fusion selon configuration
+- Vérifications de statut requises avant fusion
+- Nombre minimal de revues requis selon configuration
+- Force-push limité ou interdit selon configuration
+### Contrôles requis (status checks)
+- Liste des checks devant réussir avant fusion
+- Généralement basés sur des jobs de workflows GitHub Actions
+- Doivent être correctement nommés pour être reconnus
+### GitHub Packages
+- Registre de paquets intégré à GitHub
+- Support de plusieurs formats de paquets selon configuration
+- Authentification via le token du workflow ou un token dédié
+- Usage typique : publication d'artefacts versionnés
+### GitHub Releases
+- Représente une version publiée du logiciel
+- Peut être créée manuellement ou via un workflow
+- Généralement associée à un tag Git
+- Peut contenir des notes de version et des fichiers joints
+### Déploiement
+- Job dédié déclenché après validation des étapes précédentes
+- Utilisation d'un Environment pour cibler la destination
+- Étapes typiques : build, validation, déploiement, vérification
+### Rollback
+- Stratégie de retour à une version antérieure stable
+- Peut s'appuyer sur une release précédente ou un tag
+- Nécessite une procédure définie en amont
+- Risque associé : absence de procédure de rollback testée
+
+## Sécurité de la chaîne CI/CD
+### Secrets
+- Stockage chiffré au niveau dépôt, environnement ou organisation
+- Accessibles via le contexte `secrets`
+- Masqués par défaut dans les journaux d'exécution
+- Bonne pratique : limiter la portée des secrets au strict nécessaire
+### Permissions du token de workflow
+- `GITHUB_TOKEN` généré automatiquement à chaque exécution
+- Permissions configurables au niveau workflow ou job
+- Bonne pratique : principe du moindre privilège
+- Portée par défaut dépendante des paramètres du dépôt
+### OIDC (OpenID Connect)
+- Authentification fédérée sans secret de longue durée
+- Jeton à courte durée de vie émis par exécution
+- Permet l'accès à des fournisseurs externes configurés en confiance
+- Avantage : réduction du risque lié aux secrets statiques
+- Limite : nécessite une configuration de confiance côté fournisseur externe
+### Sécurité des actions tierces
+- Risque d'exécution de code non maîtrisé
+- Bonne pratique : épingler une action à un SHA de commit
+- Vérifier la réputation et la maintenance de l'action
+- Limiter les permissions accordées à l'exécution
+- Risque associé : modification malveillante d'un tag mobile
+### Runners auto-hébergés
+#### Rôle
+- Machine fournie par l'utilisateur pour exécuter les jobs
+- Permet un contrôle accru sur l'environnement d'exécution
+#### Cas d'usage
+- Accès à des ressources internes non exposées publiquement
+- Besoins matériels spécifiques non couverts par les runners hébergés
+#### Risques
+- Surface d'attaque accrue si exposé à des dépôts publics
+- Nécessité de maintenir et sécuriser l'infrastructure
+- Isolation entre exécutions à organiser explicitement
+#### Bonnes pratiques
+- Restreindre l'usage aux dépôts de confiance
+- Isoler les runners sur un réseau dédié
+- Réinitialiser l'environnement entre exécutions
+### Sécurité des pull requests externes
+- Risque d'exécution de code non vérifié sur `pull_request`
+- Différence de contexte entre `pull_request` et `pull_request_target`
+- Bonne pratique : restreindre les secrets disponibles sur PR externes
+
+## Observabilité, débogage et optimisation
+### Journalisation
+- Logs disponibles par step et par job
+- Mode debug activable pour plus de détails
+- Masquage automatique des valeurs reconnues comme secrets
+### Débogage
+- Réexécution ciblée d'un job en cas d'échec
+- Inspection des logs détaillés step par step
+- Ajout temporaire de steps de diagnostic
+- Erreur fréquente : variable d'environnement mal propagée entre steps
+### Optimisation des performances
+- Réduction du nombre de jobs redondants
+- Utilisation du cache pour les dépendances
+- Parallélisation via matrices lorsque pertinent
+- Limitation du périmètre des déclenchements via filtres de chemin
+### Monorepos
+- Plusieurs projets hébergés dans un même dépôt
+- Filtrage des workflows par chemin modifié
+- Risque de déclenchements inutiles sans filtrage adapté
+- Bonne pratique : workflows dédiés par sous-projet
+### Métriques et coûts
+- Temps d'exécution mesurable par job et par workflow
+- Volume de minutes consommées selon le type de runner
+- Coût influencé par la parallélisation et la fréquence des déclenchements
+- Indicateur : taux de succès des workflows sur une période donnée
+
+## Patterns, anti-patterns et démarche opérationnelle
+### Patterns recommandés
+- Pipeline en étapes progressives : build, test, déploiement
+- Séparation des environnements de préproduction et production
+- Réutilisation via workflows réutilisables et actions composites
+- Vérifications obligatoires avant fusion sur la branche principale, selon configuration
+### Anti-patterns fréquents
+- Secrets en clair dans le code ou exposés dans les logs
+- Permissions excessives accordées au token de workflow
+- Dépendance à des actions tierces non épinglées
+- Absence de stratégie de cache entraînant des temps d'exécution longs
+- Workflow monolithique difficile à maintenir
+### Exemple de démarche complète
+#### Préparation
+- Définir les environnements cibles
+- Identifier les secrets et permissions nécessaires
+#### Implémentation
+- Créer un workflow de build et de test sur chaque pull request
+- Ajouter des contrôles de statut requis sur la branche principale
+- Créer un workflow de déploiement déclenché sur un Environment
+#### Validation
+- Vérifier les résultats sur une branche de test
+- Valider les permissions effectives du token de workflow
+#### Déploiement
+- Activer les protections de branche définitives
+- Documenter la procédure de rollback
+#### Exploitation et maintenance
+- Surveiller les métriques d'exécution
+- Réviser périodiquement les actions tierces utilisées
+### Checklist opérationnelle
+- Workflows déclenchés par les événements appropriés
+- Filtres de chemin en place pour les monorepos
+- Permissions du token réduites au nécessaire
+- Scoping des secrets vérifié par environnement
+- Actions tierces épinglées à un commit
+- Cache configuré pour les dépendances principales
+- Contrôles de statut requis configurés sur la branche principale
+- Procédure de rollback documentée et testée
+
+## Alternatives et solutions comparables
+### Plateformes CI/CD alternatives
+- Solutions intégrées à d'autres forges Git
+- Solutions CI/CD indépendantes du fournisseur Git
+- Critère de choix : intégration native avec l'hébergement du code
+### Conditions de choix de GitHub Actions
+- Dépôt déjà hébergé sur GitHub
+- Besoin d'intégration native avec pull requests et releases
+- Écosystème d'actions tierces déjà disponible
+### Limites générales de GitHub Actions
+- Dépendance à la disponibilité de la plateforme GitHub
+- Modèle de coût basé sur les minutes pour les runners hébergés
+- Personnalisation avancée nécessitant des runners auto-hébergés
+
+## Ressources officielles
+- [Documentation GitHub Actions](https://docs.github.com/actions)
+- [Référence de syntaxe des workflows](https://docs.github.com/actions/reference/workflow-syntax-for-github-actions)
+- [Guides de sécurité des Actions](https://docs.github.com/actions/security-guides)
+- [GitHub Environments](https://docs.github.com/actions/deployment/targeting-different-environments)
+- [Protections de branches](https://docs.github.com/repositories/configuring-branches-and-merges-in-your-repository/managing-protected-branches)
+- [GitHub Packages](https://docs.github.com/packages)
+- [Authentification OIDC](https://docs.github.com/actions/deployment/security-hardening-your-deployments/about-security-hardening-with-openid-connect)
